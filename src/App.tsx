@@ -30,7 +30,7 @@ import {
 } from './lib/mimic'
 
 type ReferenceImage = { id: string; name: string; url: string; width: number; height: number; stats: ReturnType<typeof analyzeImage> }
-type TargetImage = { id: string; name: string; url: string; processedUrl?: string; status: 'ready' | 'processing' | 'done' | 'error' }
+type TargetImage = { id: string; name: string; url: string; processedUrl?: string; stats?: ImageStats; status: 'ready' | 'processing' | 'done' | 'error' }
 
 const emptyFingerprint: StyleFingerprint = {
   warmth: 0,
@@ -51,15 +51,21 @@ const emptyFingerprint: StyleFingerprint = {
 }
 
 const initialControls: EditControls = { strength: 68, warmer: 0, softer: 0, film: 28, color: 0, flash: 0, clean: 0 }
-type PreviewMode = 'original' | 'mimic' | 'stronger' | 'softer' | 'flash' | 'clean'
+type PreviewMode = 'original' | 'mimic' | 'stronger'
+type LookEffects = { flash: boolean; soften: boolean; clean: boolean }
+const initialEffects: LookEffects = { flash: false, soften: false, clean: false }
 
-const getEffectiveControls = (controls: EditControls, mode: PreviewMode): EditControls => {
+const getEffectiveControls = (controls: EditControls, mode: PreviewMode, effects: LookEffects): EditControls => {
+  const effective = { ...controls }
   if (mode === 'original') return { ...controls, strength: 0, flash: 0, clean: 0 }
-  if (mode === 'stronger') return { ...controls, strength: Math.min(100, controls.strength + 22) }
-  if (mode === 'softer') return { ...controls, softer: Math.max(controls.softer, 34), strength: Math.max(0, controls.strength - 8) }
-  if (mode === 'flash') return { ...controls, flash: Math.max(controls.flash, 76) }
-  if (mode === 'clean') return { ...controls, clean: Math.max(controls.clean, 84), film: Math.min(controls.film, 8) }
-  return controls
+  if (mode === 'stronger') effective.strength = Math.min(100, controls.strength + 22)
+  if (effects.soften) effective.softer = Math.max(controls.softer, 42)
+  if (effects.flash) effective.flash = Math.max(controls.flash, 82)
+  if (effects.clean) {
+    effective.clean = Math.max(controls.clean, 88)
+    effective.film = Math.min(controls.film, 8)
+  }
+  return effective
 }
 
 const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -119,6 +125,7 @@ function App() {
   const [selectedTargetId, setSelectedTargetId] = useState<string>()
   const [fingerprint, setFingerprint] = useState<StyleFingerprint>(emptyFingerprint)
   const [controls, setControls] = useState<EditControls>(initialControls)
+  const [effects, setEffects] = useState<LookEffects>(initialEffects)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('mimic')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -133,7 +140,7 @@ function App() {
   const fingerprintDefinitions = useMemo(() => getFingerprintDefinitions(fingerprint), [fingerprint])
   const styleReady = references.length > 0
   const fingerprintConfidence = styleReady ? Math.min(100, 34 + references.length * 9 + Math.round(fingerprint.skinCoverage * 16)) : 0
-  const matchMetrics = matchChecked && selectedTargetStats && styleReady ? getMatchMetrics(fingerprint, selectedTargetStats, getEffectiveControls(controls, previewMode)) : undefined
+  const matchMetrics = matchChecked && selectedTargetStats && styleReady ? getMatchMetrics(fingerprint, selectedTargetStats, getEffectiveControls(controls, previewMode, effects)) : undefined
 
   useEffect(() => {
     if (!selectedTargetId && targets[0]) setSelectedTargetId(targets[0].id)
@@ -153,7 +160,7 @@ function App() {
       }
       try {
         const image = await loadImage(selectedTarget.url)
-        const stats = analyzeImage(image)
+        const stats = selectedTarget.stats ?? analyzeImage(image)
         if (!cancelled) setSelectedTargetStats(stats)
       } catch {
         if (!cancelled) setSelectedTargetStats(undefined)
@@ -208,7 +215,7 @@ function App() {
       try {
         const image = await loadImage(url)
         if (!image.naturalWidth || !image.naturalHeight) throw new Error('Image has no size')
-        return { id: makeId(), name: file.name, url, status: 'ready' as const }
+        return { id: makeId(), name: file.name, url, stats: analyzeImage(image), status: 'ready' as const }
       } catch {
         URL.revokeObjectURL(url)
         return null
@@ -234,11 +241,11 @@ function App() {
         setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, processedUrl: undefined, status: 'ready' } : target))
         return
       }
-      const modeControls = getEffectiveControls(controls, previewMode)
+      const modeControls = getEffectiveControls(controls, previewMode, effects)
       setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, status: 'processing' } : target))
       try {
         const image = await loadImage(selectedTarget.url)
-        const processedUrl = applyMimic(image, fingerprint, modeControls)
+        const processedUrl = await applyMimic(image, fingerprint, modeControls)
         if (!cancelled) setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, processedUrl, status: 'done' } : target))
       } catch {
         if (!cancelled) setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, status: 'error' } : target))
@@ -246,18 +253,17 @@ function App() {
     }
     void render()
     return () => { cancelled = true }
-  }, [selectedTarget?.id, selectedTarget?.url, styleReady, fingerprint, controls, previewMode])
+  }, [selectedTarget?.id, selectedTarget?.url, styleReady, fingerprint, controls, effects, previewMode])
 
   const updateControl = (key: keyof EditControls, value: number) => setControls((current) => ({ ...current, [key]: value }))
 
   const setMode = (mode: PreviewMode) => {
     setPreviewMode(mode)
-    if (mode === 'original') updateControl('strength', 0)
-    if (mode === 'mimic') updateControl('strength', 68)
-    if (mode === 'stronger') updateControl('strength', 88)
-    if (mode === 'softer') updateControl('strength', 68)
-    if (mode === 'flash') updateControl('strength', 72)
-    if (mode === 'clean') updateControl('strength', 68)
+  }
+
+  const toggleEffect = (effect: keyof LookEffects) => {
+    setPreviewMode('mimic')
+    setEffects((current) => ({ ...current, [effect]: !current[effect] }))
   }
 
   const checkMatch = () => {
@@ -265,8 +271,6 @@ function App() {
       setNotice('Add at least one reference photo first.')
     } else if (!selectedTargetStats || !selectedTarget) {
       setNotice('Add a photo to edit first.')
-    } else if (selectedTarget.status === 'processing') {
-      setNotice('Mimic is still preparing this preview.')
     } else {
       setIsCheckingMatch(true)
       window.setTimeout(() => {
@@ -352,7 +356,7 @@ function App() {
           </aside>
 
           <section className="preview-panel">
-            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger', 'softer', 'flash', 'clean'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode === 'softer' ? 'Soften' : mode[0].toUpperCase() + mode.slice(1)}</button>)}</div></div>
+            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="preview-controls"><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div><div className="effect-toggles" role="group" aria-label="Optional look effects"><button className={effects.flash ? 'active' : ''} aria-pressed={effects.flash} onClick={() => toggleEffect('flash')}>Flash</button><button className={effects.soften ? 'active' : ''} aria-pressed={effects.soften} onClick={() => toggleEffect('soften')}>Soften</button><button className={effects.clean ? 'active' : ''} aria-pressed={effects.clean} onClick={() => toggleEffect('clean')}>Clean</button></div></div></div>
             <div className={`preview-stage ${!displayUrl ? 'is-empty' : ''}`}>
               {displayUrl ? <img src={displayUrl} alt="Mimic preview" /> : <div className="preview-empty"><div className="empty-orbit"><ImagePlus size={28} /></div><h3>Your preview will live here</h3><p>Start by adding a reference look and one photo to edit.</p></div>}
               {selectedTarget?.status === 'processing' && <div className="processing-overlay"><LoaderCircle className="spin" size={22} /><span>Adapting your look…</span></div>}

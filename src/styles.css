@@ -94,9 +94,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 /* Quick look controls stay easy to reach without making the preview feel busy. */
-.mode-switch { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.preview-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.mode-switch, .effect-toggles { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .mode-switch::-webkit-scrollbar { display: none; }
+.effect-toggles::-webkit-scrollbar { display: none; }
 .mode-switch button { flex: 0 0 auto; white-space: nowrap; }
+.effect-toggles { display: flex; gap: 2px; padding: 3px; background: #f2f2f7; border-radius: 9px; }
+.effect-toggles button { flex: 0 0 auto; padding: 7px 9px; color: #6e6e73; background: transparent; border-radius: 7px; font-size: 10px; white-space: nowrap; }
+.effect-toggles button.active { color: #fff; background: #5e5ce6; box-shadow: 0 2px 5px rgba(94,92,230,.22); }
 .match-report-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
 .match-report-actions > strong { color: #007aff; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .check-match-button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; color: #007aff; background: #eaf3ff; border: 1px solid #c7dff9; border-radius: 8px; font-size: 10px; font-weight: 650; white-space: nowrap; }
@@ -104,7 +109,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .target-item:focus-visible, .upload-zone:focus-visible, .check-match-button:focus-visible, .mode-switch button:focus-visible { outline: 3px solid rgba(0,122,255,.22); outline-offset: 2px; }
 
 @media (max-width: 780px) {
-  .mode-switch { width: 100%; justify-content: flex-start; }
+  .preview-controls { width: 100%; align-items: stretch; flex-direction: column; }
+  .mode-switch, .effect-toggles { width: 100%; justify-content: flex-start; }
   .match-report-heading { align-items: flex-start; flex-direction: column; }
   .match-report-actions { width: 100%; justify-content: space-between; }
 }

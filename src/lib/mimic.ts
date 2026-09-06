@@ -244,12 +244,12 @@ export const getMatchMetrics = (fingerprint: StyleFingerprint, target: ImageStat
 }
 
 const resizeForOutput = (image: HTMLImageElement) => {
-  const maxDimension = 2400
+  const maxDimension = 1800
   const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight))
   return { width: Math.max(1, Math.round(image.naturalWidth * scale)), height: Math.max(1, Math.round(image.naturalHeight * scale)) }
 }
 
-export const applyMimic = (image: HTMLImageElement, fingerprint: StyleFingerprint, controls: EditControls) => {
+export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFingerprint, controls: EditControls) => {
   const { width, height } = resizeForOutput(image)
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -276,6 +276,11 @@ export const applyMimic = (image: HTMLImageElement, fingerprint: StyleFingerprin
   const skinWarmthDelta = fingerprint.skinWarmth - sourceStats.skinWarmth
   const skinBrightnessDelta = fingerprint.skinBrightness - sourceStats.skinBrightness
   const skinSaturationDelta = fingerprint.skinSaturation - sourceStats.skinSaturation
+
+  const yieldToBrowser = () => new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
+    else setTimeout(resolve, 0)
+  })
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -326,6 +331,7 @@ export const applyMimic = (image: HTMLImageElement, fingerprint: StyleFingerprin
       data[index + 1] = clamp((g * vignette + grain) * 255, 0, 255)
       data[index + 2] = clamp((b * vignette + grain) * 255, 0, 255)
     }
+    if (y > 0 && y % 24 === 0) await yieldToBrowser()
   }
 
   context.putImageData(frame, 0, 0)
