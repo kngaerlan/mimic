@@ -21,6 +21,7 @@ import {
   applyMimic,
   fingerprintFromStats,
   formatStyleTags,
+  getFingerprintDefinitions,
   getMatchMetrics,
   loadImage,
   type EditControls,
@@ -112,13 +113,19 @@ function App() {
 
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? targets[0]
   const styleTags = useMemo(() => formatStyleTags(fingerprint), [fingerprint])
+  const fingerprintDefinitions = useMemo(() => getFingerprintDefinitions(fingerprint), [fingerprint])
   const styleReady = references.length > 0
+  const fingerprintConfidence = styleReady ? Math.min(100, 34 + references.length * 9) : 0
   const matchMetrics = selectedTargetStats && styleReady ? getMatchMetrics(fingerprint, selectedTargetStats, controls) : undefined
 
   useEffect(() => {
     if (!selectedTargetId && targets[0]) setSelectedTargetId(targets[0].id)
     if (selectedTargetId && !targets.some((target) => target.id === selectedTargetId)) setSelectedTargetId(targets[0]?.id)
   }, [selectedTargetId, targets])
+
+  useEffect(() => {
+    setFingerprint(references.length ? fingerprintFromStats(references.map((reference) => reference.stats)) : emptyFingerprint)
+  }, [references])
 
   useEffect(() => {
     let cancelled = false
@@ -154,10 +161,7 @@ function App() {
       }
     }))
     const valid = next.filter(Boolean) as ReferenceImage[]
-    if (valid.length) {
-      setReferences((current) => [...current, ...valid])
-      setFingerprint(fingerprintFromStats([...references, ...valid].map((item) => item.stats)))
-    }
+    if (valid.length) setReferences((current) => [...current, ...valid])
     setIsAnalyzing(false)
   }
 
@@ -201,7 +205,6 @@ function App() {
     if (item) URL.revokeObjectURL(item.url)
     const remaining = references.filter((reference) => reference.id !== id)
     setReferences(remaining)
-    setFingerprint(remaining.length ? fingerprintFromStats(remaining.map((reference) => reference.stats)) : emptyFingerprint)
   }
 
   const removeTarget = (id: string) => {
@@ -262,12 +265,12 @@ function App() {
         <div className="editor-grid">
           <aside className="side-panel reference-panel">
             <div className="panel-heading"><div><span className="panel-kicker"><span className="step-number">1</span> Reference photos</span><h2>Teach Mimic a look</h2></div><span className="count-badge">{references.length}/20</span></div>
-            <p className="panel-copy">Choose a few photos with the mood, color, and softness you want to carry over.</p>
+            <p className="panel-copy">Choose a few photos with the mood, color, and softness you want to carry over. Adding more helps Mimic learn how your look behaves in different light.</p>
             <UploadZone label="Add reference photos" hint="JPG, PNG, or WebP · up to 20" onFiles={addReferences} />
             {references.length > 0 && <div className="thumb-grid">{references.map((reference) => <div className="thumb-card" key={reference.id}><img src={reference.url} alt={reference.name} /><button className="thumb-remove" onClick={() => removeReference(reference.id)} aria-label={`Remove ${reference.name}`}><X size={13} /></button></div>)}</div>}
             <div className={`fingerprint-card ${styleReady ? 'is-ready' : ''}`}>
               <div className="fingerprint-header"><span className="fingerprint-icon"><Sparkles size={15} /></span><span>{isAnalyzing ? 'Reading your references…' : styleReady ? 'Your visual fingerprint' : 'Your fingerprint will appear here'}</span>{isAnalyzing && <LoaderCircle className="spin" size={15} />}</div>
-              {styleReady ? <><div className="fingerprint-summary"><span className="summary-dot" /> Mimic found a shared look</div><div className="tag-list">{styleTags.map((tag) => <span key={tag}><Check size={12} /> {tag}</span>)}</div></> : <p>Add at least one reference image to extract the tone, color, contrast, and texture your photos share.</p>}
+              {styleReady ? <><div className="fingerprint-summary"><span className="summary-dot" /><span><strong>Learning from {references.length} {references.length === 1 ? 'photo' : 'photos'}</strong><small>The more you add, the clearer your look becomes.</small></span></div><div className="fingerprint-confidence"><div><span>Fingerprint confidence</span><strong>{fingerprintConfidence}%</strong></div><span className="confidence-track"><span style={{ width: `${fingerprintConfidence}%` }} /></span></div><div className="tag-list">{styleTags.map((tag) => <span key={tag}><Check size={12} /> {tag}</span>)}</div><div className="fingerprint-definitions">{fingerprintDefinitions.map((definition) => <div className="definition-row" key={definition.label}><div className="definition-top"><span><strong>{definition.label}</strong><small>{definition.description}</small></span><b>{definition.value}%</b></div><div className="definition-track"><span style={{ width: `${definition.value}%` }} /></div></div>)}</div></> : <p>Add at least one reference image to extract the tone, color, contrast, and texture your photos share.</p>}
             </div>
             <div className="privacy-note"><LockKeyhole size={14} /><span>Photos never leave this device. Mimic uses conventional pixel analysis — no generated content.</span></div>
           </aside>

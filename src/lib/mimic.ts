@@ -45,6 +45,12 @@ export type MatchMetrics = {
   matchedSkinColor: string
 }
 
+export type FingerprintDefinition = {
+  label: string
+  description: string
+  value: number
+}
+
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value))
 
 const srgbToLinear = (value: number) => {
@@ -269,4 +275,21 @@ export const formatStyleTags = (fingerprint: StyleFingerprint) => {
   if (fingerprint.saturation > 0.32) tags.push('Rich color')
   if (fingerprint.grain > 0.34) tags.push('Film texture')
   return tags.length ? tags.slice(0, 4) : ['Balanced color', 'Natural contrast']
+}
+
+export const getFingerprintDefinitions = (fingerprint: StyleFingerprint): FingerprintDefinition[] => {
+  const warmthLabel = fingerprint.warmth > 0.045 ? 'Warm highlights' : fingerprint.warmth < -0.04 ? 'Cool highlights' : 'Neutral highlights'
+  const warmthDescription = fingerprint.warmth > 0.045 ? 'Brighter parts of the photo lean softly golden.' : fingerprint.warmth < -0.04 ? 'Brighter parts of the photo keep a cooler, cleaner feel.' : 'Bright areas stay close to the original white balance.'
+  const contrastLabel = fingerprint.contrast < 0.19 ? 'Soft contrast' : 'Defined contrast'
+  const contrastDescription = fingerprint.contrast < 0.19 ? 'Light and dark areas meet with a gentle rolloff.' : 'Light and dark areas have a little more separation.'
+  const shadowLabel = fingerprint.shadowLift > 0.48 ? 'Lifted blacks' : 'Deep shadows'
+  const shadowDescription = fingerprint.shadowLift > 0.48 ? 'Dark areas stay open so detail is easier to see.' : 'Dark areas stay rich and grounded.'
+  const textureLabel = fingerprint.grain > 0.34 ? 'Film texture' : 'Clean texture'
+  const textureDescription = fingerprint.grain > 0.34 ? 'A small amount of grain and color variation gives the look character.' : 'The look stays smooth and polished with very little grain.'
+  return [
+    { label: warmthLabel, description: warmthDescription, value: Math.round(clamp(0.5 + Math.abs(fingerprint.warmth) * 3.2) * 100) },
+    { label: contrastLabel, description: contrastDescription, value: Math.round(clamp(fingerprint.contrast * 2.8) * 100) },
+    { label: shadowLabel, description: shadowDescription, value: Math.round(clamp(fingerprint.shadowLift) * 100) },
+    { label: textureLabel, description: textureDescription, value: Math.round(clamp(fingerprint.grain) * 100) },
+  ]
 }
