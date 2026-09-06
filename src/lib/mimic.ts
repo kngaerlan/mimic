@@ -1,3 +1,5 @@
+import type { SubjectMask } from './subject'
+
 export type StyleFingerprint = {
   warmth: number
   saturation: number
@@ -249,7 +251,7 @@ const resizeForOutput = (image: HTMLImageElement) => {
   return { width: Math.max(1, Math.round(image.naturalWidth * scale)), height: Math.max(1, Math.round(image.naturalHeight * scale)) }
 }
 
-export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFingerprint, controls: EditControls) => {
+export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFingerprint, controls: EditControls, subjectMask?: SubjectMask) => {
   const { width, height } = resizeForOutput(image)
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -299,7 +301,10 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
       const centerY = y / Math.max(1, height - 1) - 0.5
       const centerBias = clamp(1 - Math.sqrt(centerX * centerX + centerY * centerY) * 1.35)
       const skinPixel = isSkinPixel(originalR, originalG, originalB)
-      const subjectBias = clamp(Math.pow(centerBias, 2.35) * 0.88 + (skinPixel ? 0.42 : 0))
+      const maskX = subjectMask ? Math.min(subjectMask.width - 1, Math.floor((x / width) * subjectMask.width)) : 0
+      const maskY = subjectMask ? Math.min(subjectMask.height - 1, Math.floor((y / height) * subjectMask.height)) : 0
+      const aiSubject = subjectMask ? subjectMask.data[(maskY * subjectMask.width + maskX) * 4 + 3] / 255 : 0
+      const subjectBias = subjectMask ? clamp(aiSubject) : clamp(Math.pow(centerBias, 2.35) * 0.88 + (skinPixel ? 0.42 : 0))
       if (flashAmount) {
         const directFlash = flashAmount * subjectBias
         luma = clamp((luma - 0.46) * (1 + directFlash * 0.58) + 0.46)

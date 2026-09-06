@@ -28,6 +28,7 @@ import {
   type ImageStats,
   type StyleFingerprint,
 } from './lib/mimic'
+import { findSubjectMask, type SubjectMask } from './lib/subject'
 
 type ReferenceImage = { id: string; name: string; url: string; width: number; height: number; stats: ReturnType<typeof analyzeImage> }
 type TargetImage = { id: string; name: string; url: string; processedUrl?: string; stats?: ImageStats; status: 'ready' | 'processing' | 'done' | 'error' }
@@ -126,6 +127,8 @@ function App() {
   const [fingerprint, setFingerprint] = useState<StyleFingerprint>(emptyFingerprint)
   const [controls, setControls] = useState<EditControls>(initialControls)
   const [effects, setEffects] = useState<LookEffects>(initialEffects)
+  const [subjectMask, setSubjectMask] = useState<SubjectMask>()
+  const [isPreparingFlash, setIsPreparingFlash] = useState(false)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('mimic')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -172,6 +175,27 @@ function App() {
   useEffect(() => {
     setMatchChecked(false)
   }, [fingerprint, selectedTarget?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    const prepareSubject = async () => {
+      if (!effects.flash || !selectedTarget) {
+        setSubjectMask(undefined)
+        setIsPreparingFlash(false)
+        return
+      }
+      setIsPreparingFlash(true)
+      try {
+        const image = await loadImage(selectedTarget.url)
+        const mask = await findSubjectMask(image)
+        if (!cancelled) setSubjectMask(mask)
+      } finally {
+        if (!cancelled) setIsPreparingFlash(false)
+      }
+    }
+    void prepareSubject()
+    return () => { cancelled = true }
+  }, [effects.flash, selectedTarget?.id, selectedTarget?.url])
 
   const addReferences = async (files: File[]) => {
     const remainingSlots = Math.max(0, 20 - references.length)
@@ -240,11 +264,12 @@ function App() {
         setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, processedUrl: undefined, status: 'ready' } : target))
         return
       }
+      if (effects.flash && isPreparingFlash) return
       const modeControls = getEffectiveControls(controls, previewMode, effects)
       setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, status: 'processing' } : target))
       try {
         const image = await loadImage(selectedTarget.url)
-        const processedUrl = await applyMimic(image, fingerprint, modeControls)
+        const processedUrl = await applyMimic(image, fingerprint, modeControls, subjectMask)
         if (!cancelled) setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, processedUrl, status: 'done' } : target))
       } catch {
         if (!cancelled) setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, status: 'error' } : target))
@@ -252,7 +277,7 @@ function App() {
     }
     void render()
     return () => { cancelled = true }
-  }, [selectedTarget?.id, selectedTarget?.url, styleReady, fingerprint, controls, effects, previewMode])
+  }, [selectedTarget?.id, selectedTarget?.url, styleReady, fingerprint, controls, effects, previewMode, subjectMask, isPreparingFlash])
 
   const updateControl = (key: keyof EditControls, value: number) => setControls((current) => ({ ...current, [key]: value }))
 
@@ -351,7 +376,7 @@ function App() {
           </aside>
 
           <section className="preview-panel">
-            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="preview-controls"><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div><div className="effect-toggles" role="group" aria-label="Optional look effects"><button className={`effect-toggle ${effects.flash ? 'active' : ''}`} aria-pressed={effects.flash} onClick={() => toggleEffect('flash')}><span>Flash</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button><button className={`effect-toggle ${effects.soften ? 'active' : ''}`} aria-pressed={effects.soften} onClick={() => toggleEffect('soften')}><span>Soften</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button><button className={`effect-toggle ${effects.clean ? 'active' : ''}`} aria-pressed={effects.clean} onClick={() => toggleEffect('clean')}><span>Clean</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button></div></div></div>
+            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{isPreparingFlash ? 'Finding the subject for Flash…' : selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="preview-controls"><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div><div className="effect-toggles" role="group" aria-label="Optional look effects"><button className={`effect-toggle ${effects.flash ? 'active' : ''}`} aria-pressed={effects.flash} onClick={() => toggleEffect('flash')}><span>Flash</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button><button className={`effect-toggle ${effects.soften ? 'active' : ''}`} aria-pressed={effects.soften} onClick={() => toggleEffect('soften')}><span>Soften</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button><button className={`effect-toggle ${effects.clean ? 'active' : ''}`} aria-pressed={effects.clean} onClick={() => toggleEffect('clean')}><span>Clean</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button></div></div></div>
             <div className={`preview-stage ${!displayUrl ? 'is-empty' : ''}`}>
               {displayUrl ? <img src={displayUrl} alt="Mimic preview" /> : <div className="preview-empty"><div className="empty-orbit"><ImagePlus size={28} /></div><h3>Your preview will live here</h3><p>Start by adding a reference look and one photo to edit.</p></div>}
               {selectedTarget?.status === 'processing' && <div className="processing-overlay"><LoaderCircle className="spin" size={22} /><span>Adapting your look…</span></div>}
