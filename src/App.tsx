@@ -3,7 +3,6 @@ import {
   Aperture,
   ArrowDownToLine,
   Check,
-  ChevronDown,
   CircleHelp,
   Download,
   ImagePlus,
@@ -197,25 +196,25 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark"><Aperture size={20} strokeWidth={2.5} /></span><span>Mimic</span><span className="brand-divider" /><span className="brand-context">Adaptive photo styling</span></div>
-        <div className="topbar-actions"><span className="local-pill"><LockKeyhole size={14} /> Local-only editing</span><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button></div>
+        <div className="brand"><span className="brand-mark"><Aperture size={20} strokeWidth={2.5} /></span><span>Mimic</span><span className="brand-divider" /><span className="brand-context">Look maker</span></div>
+        <div className="topbar-actions"><span className="local-pill"><LockKeyhole size={14} /> Photos stay on this device</span><button className="icon-button" aria-label="Help"><CircleHelp size={18} /></button></div>
       </header>
 
       <main className="workspace">
         <section className="workspace-intro">
-          <div><p className="eyebrow">Your look, adapted</p><h1>Teach Mimic the mood you love.</h1><p className="intro-copy">Give it a few reference photos, then make your own images feel like they belong together.</p></div>
-          <div className="workflow-legend"><span><b>01</b> Learn a look</span><span><b>02</b> Adapt your photos</span><span><b>03</b> Download</span></div>
+          <div><p className="eyebrow">Look maker</p><h1>Make a look from photos you already love.</h1><p className="intro-copy">Add a few references on the left, your photos on the right, and Mimic will bring them together with one gentle edit.</p></div>
+          <div className="workflow-legend"><span><LockKeyhole size={14} /> Photos stay on this device</span><span><b>JPG</b> <b>PNG</b> <b>WebP</b></span></div>
         </section>
 
         <div className="editor-grid">
           <aside className="side-panel reference-panel">
-            <div className="panel-heading"><div><span className="panel-kicker">01 · Reference look</span><h2>Teach Mimic</h2></div><span className="count-badge">{references.length}/20</span></div>
-            <p className="panel-copy">Use photos that already have the feeling you want. More examples make the match more personal.</p>
+            <div className="panel-heading"><div><span className="panel-kicker">Reference photos</span><h2>Teach Mimic a look</h2></div><span className="count-badge">{references.length}/20</span></div>
+            <p className="panel-copy">Choose a few photos with the mood, color, and softness you want to carry over.</p>
             <UploadZone label="Add reference photos" hint="JPG, PNG, or WebP · up to 20" onFiles={addReferences} />
             {references.length > 0 && <div className="thumb-grid">{references.map((reference) => <div className="thumb-card" key={reference.id}><img src={reference.url} alt={reference.name} /><button className="thumb-remove" onClick={() => removeReference(reference.id)} aria-label={`Remove ${reference.name}`}><X size={13} /></button></div>)}</div>}
             <div className={`fingerprint-card ${styleReady ? 'is-ready' : ''}`}>
               <div className="fingerprint-header"><span className="fingerprint-icon"><Sparkles size={15} /></span><span>{isAnalyzing ? 'Reading your references…' : styleReady ? 'Your visual fingerprint' : 'Your fingerprint will appear here'}</span>{isAnalyzing && <LoaderCircle className="spin" size={15} />}</div>
-              {styleReady ? <><div className="fingerprint-metrics"><div><strong>{Math.round((fingerprint.brightness || 0.5) * 100)}</strong><span>light</span></div><div><strong>{Math.round((fingerprint.saturation || 0.2) * 100)}</strong><span>color</span></div><div><strong>{Math.round((fingerprint.contrast || 0.2) * 100)}</strong><span>contrast</span></div></div><div className="tag-list">{styleTags.map((tag) => <span key={tag}><Check size={12} /> {tag}</span>)}</div></> : <p>Add at least one reference image to extract the tone, color, contrast, and texture your photos share.</p>}
+              {styleReady ? <><div className="fingerprint-summary"><span className="summary-dot" /> Mimic found a shared look</div><div className="tag-list">{styleTags.map((tag) => <span key={tag}><Check size={12} /> {tag}</span>)}</div></> : <p>Add at least one reference image to extract the tone, color, contrast, and texture your photos share.</p>}
             </div>
             <div className="privacy-note"><LockKeyhole size={14} /><span>Photos never leave this device. Mimic uses conventional pixel analysis — no generated content.</span></div>
           </aside>
@@ -231,8 +230,8 @@ function App() {
           </section>
 
           <aside className="side-panel target-panel">
-            <div className="panel-heading"><div><span className="panel-kicker">02 · Your photos</span><h2>Make them match</h2></div><span className="count-badge">{targets.length}</span></div>
-            <p className="panel-copy">Mimic adapts each image separately, so a bright outdoor shot and a dark indoor shot still feel like the same set.</p>
+            <div className="panel-heading"><div><span className="panel-kicker">Photos to edit</span><h2>Make them match</h2></div><span className="count-badge">{targets.length}</span></div>
+            <p className="panel-copy">Add one photo or a whole set. Each image keeps its own lighting while sharing the look.</p>
             <UploadZone label="Add photos to edit" hint="Drop one or many images here" onFiles={addTargets} />
             {targets.length > 0 && <div className="target-list">{targets.map((target, index) => <button className={`target-item ${selectedTarget?.id === target.id ? 'selected' : ''}`} key={target.id} onClick={() => setSelectedTargetId(target.id)}><img src={target.url} alt="" /><span className="target-info"><strong>{target.name}</strong><small>{target.status === 'processing' ? 'Adapting…' : target.status === 'done' ? 'Ready to download' : target.status === 'error' ? 'Could not process' : `Photo ${String(index + 1).padStart(2, '0')}`}</small></span>{target.status === 'processing' ? <LoaderCircle className="spin target-state" size={16} /> : target.status === 'done' ? <Check className="target-state done" size={16} /> : <button className="remove-target" onClick={(event) => { event.stopPropagation(); removeTarget(target.id) }} aria-label={`Remove ${target.name}`}><Trash2 size={15} /></button>}</button>)}</div>}
             {targets.length > 0 && <button className="download-all" onClick={downloadAll} disabled={!targets.some((target) => target.processedUrl)}><ArrowDownToLine size={17} /> Download all edited photos</button>}
@@ -241,7 +240,7 @@ function App() {
         </div>
 
         <section className="fine-tune-section">
-          <div className="fine-tune-heading"><div><span className="panel-kicker">03 · Friendly controls</span><h2>Make it feel more like you</h2></div><span className="fine-tune-hint"><SunMedium size={15} /> Gentle by default</span></div>
+          <div className="fine-tune-heading"><div><span className="panel-kicker">Fine tune</span><h2>Make it feel more like you</h2></div><span className="fine-tune-hint"><SunMedium size={15} /> Gentle by default</span></div>
           <div className="slider-grid"><Slider label="Warmer" left="Cool" right="Golden" value={controls.warmer + 50} onChange={(value) => updateControl('warmer', value - 50)} tone="warm" /><Slider label="Softer" left="Crisp" right="Dreamy" value={controls.softer + 50} onChange={(value) => updateControl('softer', value - 50)} tone="soft" /><Slider label="More film" left="Clean" right="Textured" value={controls.film} onChange={(value) => updateControl('film', value)} tone="film" /><Slider label="More color" left="Quiet" right="Rich" value={controls.color + 50} onChange={(value) => updateControl('color', value - 50)} tone="color" /></div>
         </section>
 
