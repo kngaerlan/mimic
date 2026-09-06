@@ -43,10 +43,24 @@ const emptyFingerprint: StyleFingerprint = {
   red: 0.5,
   green: 0.5,
   blue: 0.5,
+  skinWarmth: 0.12,
+  skinBrightness: 0.55,
+  skinSaturation: 0.35,
+  skinCoverage: 0,
   sampleCount: 0,
 }
 
-const initialControls: EditControls = { strength: 68, warmer: 0, softer: 0, film: 28, color: 0 }
+const initialControls: EditControls = { strength: 68, warmer: 0, softer: 0, film: 28, color: 0, flash: 0, clean: 0 }
+type PreviewMode = 'original' | 'mimic' | 'stronger' | 'softer' | 'flash' | 'clean'
+
+const getEffectiveControls = (controls: EditControls, mode: PreviewMode): EditControls => {
+  if (mode === 'original') return { ...controls, strength: 0, flash: 0, clean: 0 }
+  if (mode === 'stronger') return { ...controls, strength: Math.min(100, controls.strength + 22) }
+  if (mode === 'softer') return { ...controls, softer: Math.max(controls.softer, 34), strength: Math.max(0, controls.strength - 8) }
+  if (mode === 'flash') return { ...controls, flash: Math.max(controls.flash, 76) }
+  if (mode === 'clean') return { ...controls, clean: Math.max(controls.clean, 84), film: Math.min(controls.film, 8) }
+  return controls
+}
 
 const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -70,7 +84,7 @@ function UploadZone({ label, hint, onFiles, multiple = true }: { label: string; 
       tabIndex={0}
       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click() }}
     >
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple={multiple} onChange={(event) => onFiles(readFiles(event))} />
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple={multiple} onChange={(event) => { onFiles(readFiles(event)); event.currentTarget.value = '' }} />
       <span className="upload-icon"><Upload size={17} /></span>
       <strong>{label}</strong>
       <span>{hint}</span>
@@ -105,18 +119,21 @@ function App() {
   const [selectedTargetId, setSelectedTargetId] = useState<string>()
   const [fingerprint, setFingerprint] = useState<StyleFingerprint>(emptyFingerprint)
   const [controls, setControls] = useState<EditControls>(initialControls)
-  const [previewMode, setPreviewMode] = useState<'original' | 'mimic' | 'stronger' | 'softer'>('mimic')
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('mimic')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [selectedTargetStats, setSelectedTargetStats] = useState<ImageStats>()
+  const [matchChecked, setMatchChecked] = useState(false)
+  const [isCheckingMatch, setIsCheckingMatch] = useState(false)
   const [notice, setNotice] = useState('')
 
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? targets[0]
   const styleTags = useMemo(() => formatStyleTags(fingerprint), [fingerprint])
   const fingerprintDefinitions = useMemo(() => getFingerprintDefinitions(fingerprint), [fingerprint])
   const styleReady = references.length > 0
-  const fingerprintConfidence = styleReady ? Math.min(100, 34 + references.length * 9) : 0
-  const matchMetrics = selectedTargetStats && styleReady ? getMatchMetrics(fingerprint, selectedTargetStats, controls) : undefined
+  const fingerprintConfidence = styleReady ? Math.min(100, 34 + references.length * 9 + Math.round(fingerprint.skinCoverage * 16)) : 0
+  const matchMetrics = matchChecked && selectedTargetStats && styleReady ? getMatchMetrics(fingerprint, selectedTargetStats, getEffectiveControls(controls, previewMode)) : undefined
 
   useEffect(() => {
     if (!selectedTargetId && targets[0]) setSelectedTargetId(targets[0].id)
@@ -146,9 +163,18 @@ function App() {
     return () => { cancelled = true }
   }, [selectedTarget?.id, selectedTarget?.url])
 
+  useEffect(() => {
+    setMatchChecked(false)
+  }, [fingerprint, selectedTarget?.id])
+
   const addReferences = async (files: File[]) => {
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'))
-    if (!imageFiles.length) return
+    const remainingSlots = Math.max(0, 20 - references.length)
+    const imageFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, remainingSlots)
+    if (!imageFiles.length) {
+      setNotice(references.length >= 20 ? 'You can add up to 20 reference photos.' : 'Choose a JPG, PNG, or WebP image.')
+      window.setTimeout(() => setNotice(''), 3500)
+      return
+    }
     setIsAnalyzing(true)
     const next = await Promise.all(imageFiles.map(async (file) => {
       const url = URL.createObjectURL(file)
@@ -162,21 +188,53 @@ function App() {
     }))
     const valid = next.filter(Boolean) as ReferenceImage[]
     if (valid.length) setReferences((current) => [...current, ...valid])
+    if (valid.length !== imageFiles.length) {
+      setNotice('One or more photos could not be read. Try another image.')
+      window.setTimeout(() => setNotice(''), 3500)
+    }
     setIsAnalyzing(false)
   }
 
   const addTargets = async (files: File[]) => {
     const imageFiles = files.filter((file) => file.type.startsWith('image/'))
-    const next = imageFiles.map((file) => ({ id: makeId(), name: file.name, url: URL.createObjectURL(file), status: 'ready' as const }))
-    setTargets((current) => [...current, ...next])
-    if (!selectedTargetId && next[0]) setSelectedTargetId(next[0].id)
+    if (!imageFiles.length) {
+      setNotice('Choose a JPG, PNG, or WebP image.')
+      window.setTimeout(() => setNotice(''), 3500)
+      return
+    }
+    setIsUploading(true)
+    const next = await Promise.all(imageFiles.map(async (file) => {
+      const url = URL.createObjectURL(file)
+      try {
+        const image = await loadImage(url)
+        if (!image.naturalWidth || !image.naturalHeight) throw new Error('Image has no size')
+        return { id: makeId(), name: file.name, url, status: 'ready' as const }
+      } catch {
+        URL.revokeObjectURL(url)
+        return null
+      }
+    }))
+    const valid = next.filter(Boolean) as TargetImage[]
+    if (valid.length) {
+      setTargets((current) => [...current, ...valid])
+      if (!selectedTargetId) setSelectedTargetId(valid[0].id)
+    }
+    if (valid.length !== imageFiles.length) {
+      setNotice('One or more photos could not be read. Try another image.')
+      window.setTimeout(() => setNotice(''), 3500)
+    }
+    setIsUploading(false)
   }
 
   useEffect(() => {
     let cancelled = false
     const render = async () => {
-      if (!selectedTarget || !styleReady) return
-      const modeControls = previewMode === 'stronger' ? { ...controls, strength: Math.min(100, controls.strength + 22) } : previewMode === 'softer' ? { ...controls, strength: Math.max(0, controls.strength - 24) } : previewMode === 'original' ? { ...controls, strength: 0 } : controls
+      if (!selectedTarget) return
+      if (!styleReady) {
+        setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, processedUrl: undefined, status: 'ready' } : target))
+        return
+      }
+      const modeControls = getEffectiveControls(controls, previewMode)
       setTargets((current) => current.map((target) => target.id === selectedTarget.id ? { ...target, status: 'processing' } : target))
       try {
         const image = await loadImage(selectedTarget.url)
@@ -192,12 +250,31 @@ function App() {
 
   const updateControl = (key: keyof EditControls, value: number) => setControls((current) => ({ ...current, [key]: value }))
 
-  const setMode = (mode: 'original' | 'mimic' | 'stronger' | 'softer') => {
+  const setMode = (mode: PreviewMode) => {
     setPreviewMode(mode)
     if (mode === 'original') updateControl('strength', 0)
     if (mode === 'mimic') updateControl('strength', 68)
     if (mode === 'stronger') updateControl('strength', 88)
-    if (mode === 'softer') updateControl('strength', 42)
+    if (mode === 'softer') updateControl('strength', 68)
+    if (mode === 'flash') updateControl('strength', 72)
+    if (mode === 'clean') updateControl('strength', 68)
+  }
+
+  const checkMatch = () => {
+    if (!styleReady) {
+      setNotice('Add at least one reference photo first.')
+    } else if (!selectedTargetStats || !selectedTarget) {
+      setNotice('Add a photo to edit first.')
+    } else if (selectedTarget.status === 'processing') {
+      setNotice('Mimic is still preparing this preview.')
+    } else {
+      setIsCheckingMatch(true)
+      window.setTimeout(() => {
+        setMatchChecked(true)
+        setIsCheckingMatch(false)
+      }, 280)
+    }
+    window.setTimeout(() => setNotice(''), 3500)
   }
 
   const removeReference = (id: string) => {
@@ -258,8 +335,7 @@ function App() {
 
       <main className="workspace">
         <section className="workspace-intro">
-          <div><p className="eyebrow">Look maker</p><h1>Make a look from photos you already love.</h1><p className="intro-copy">Add a few references on the left, your photos on the right, and Mimic will bring them together with one gentle edit.</p></div>
-          <div className="workflow-legend"><span className="step-item"><b>1</b> Add reference photos</span><span className="step-item"><b>2</b> Add photos to edit</span><span className="step-item"><b>3</b> Adjust the match</span></div>
+          <div><p className="eyebrow">Look maker</p><h1>Make a look from photos you already love.</h1><p className="intro-copy">Add a few references, choose the photos you want to edit, and shape the result until it feels like you.</p></div>
         </section>
 
         <div className="editor-grid">
@@ -270,27 +346,27 @@ function App() {
             {references.length > 0 && <div className="thumb-grid">{references.map((reference) => <div className="thumb-card" key={reference.id}><img src={reference.url} alt={reference.name} /><button className="thumb-remove" onClick={() => removeReference(reference.id)} aria-label={`Remove ${reference.name}`}><X size={13} /></button></div>)}</div>}
             <div className={`fingerprint-card ${styleReady ? 'is-ready' : ''}`}>
               <div className="fingerprint-header"><span className="fingerprint-icon"><Sparkles size={15} /></span><span>{isAnalyzing ? 'Reading your references…' : styleReady ? 'Your visual fingerprint' : 'Your fingerprint will appear here'}</span>{isAnalyzing && <LoaderCircle className="spin" size={15} />}</div>
-              {styleReady ? <><div className="fingerprint-summary"><span className="summary-dot" /><span><strong>Learning from {references.length} {references.length === 1 ? 'photo' : 'photos'}</strong><small>The more you add, the clearer your look becomes.</small></span></div><div className="fingerprint-confidence"><div><span>Fingerprint confidence</span><strong>{fingerprintConfidence}%</strong></div><span className="confidence-track"><span style={{ width: `${fingerprintConfidence}%` }} /></span></div><div className="tag-list">{styleTags.map((tag) => <span key={tag}><Check size={12} /> {tag}</span>)}</div><div className="fingerprint-definitions">{fingerprintDefinitions.map((definition) => <div className="definition-row" key={definition.label}><div className="definition-top"><span><strong>{definition.label}</strong><small>{definition.description}</small></span><b>{definition.value}%</b></div><div className="definition-track"><span style={{ width: `${definition.value}%` }} /></div></div>)}</div></> : <p>Add at least one reference image to extract the tone, color, contrast, and texture your photos share.</p>}
+              {styleReady ? <><div className="fingerprint-summary"><span className="summary-dot" /><span><strong>Learning from {references.length} {references.length === 1 ? 'photo' : 'photos'}</strong><small>Each photo helps refine color, texture, and skin tone handling.</small></span></div><div className="fingerprint-confidence"><div><span>Fingerprint confidence</span><strong>{fingerprintConfidence}%</strong></div><span className="confidence-track"><span style={{ width: `${fingerprintConfidence}%` }} /></span></div><div className="tag-list">{styleTags.map((tag) => <span key={tag}><Check size={12} /> {tag}</span>)}</div><div className="fingerprint-definitions">{fingerprintDefinitions.map((definition) => <div className="definition-row" key={definition.label}><div className="definition-top"><span><strong>{definition.label}</strong><small>{definition.description}</small></span><b>{definition.value}%</b></div><div className="definition-track"><span style={{ width: `${definition.value}%` }} /></div></div>)}</div></> : <p>Add at least one reference image to extract the tone, color, contrast, texture, and skin tone behavior your photos share.</p>}
             </div>
             <div className="privacy-note"><LockKeyhole size={14} /><span>Photos never leave this device. Mimic uses conventional pixel analysis — no generated content.</span></div>
           </aside>
 
           <section className="preview-panel">
-            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger', 'softer'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div></div>
+            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger', 'softer', 'flash', 'clean'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode === 'softer' ? 'Soften' : mode[0].toUpperCase() + mode.slice(1)}</button>)}</div></div>
             <div className={`preview-stage ${!displayUrl ? 'is-empty' : ''}`}>
               {displayUrl ? <img src={displayUrl} alt="Mimic preview" /> : <div className="preview-empty"><div className="empty-orbit"><ImagePlus size={28} /></div><h3>Your preview will live here</h3><p>Start by adding a reference look and one photo to edit.</p></div>}
               {selectedTarget?.status === 'processing' && <div className="processing-overlay"><LoaderCircle className="spin" size={22} /><span>Adapting your look…</span></div>}
               {selectedTarget && <div className="preview-caption"><span><span className="status-dot" /> Same photo. Same scene. Your look.</span><button className={`compare-toggle ${compareOriginal ? 'active' : ''}`} onClick={() => setCompareOriginal((value) => !value)}>{compareOriginal ? 'Showing original' : 'Compare original'}</button></div>}
             </div>
             <div className="preview-footer"><div className="match-control"><div className="control-title"><span><WandSparkles size={15} /> Match strength</span><strong>{controls.strength}%</strong></div><input type="range" min="0" max="100" value={controls.strength} onChange={(event) => { updateControl('strength', Number(event.target.value)); setPreviewMode('mimic') }} /><div className="control-scale"><span>Natural</span><span>Exact look</span></div></div><div className="preview-size"><span>Preview</span><b>{selectedTarget ? 'Ready to save' : 'Waiting for photo'}</b></div></div>
-            <div className="match-report"><div className="match-report-heading"><div><span className="panel-kicker">Match check</span><h3>How close is the look?</h3></div><strong>{matchMetrics ? `${Math.round(matchMetrics.overall * 100)}% matched` : 'Waiting for both sets'}</strong></div>{matchMetrics ? <div className="match-cards"><MatchCard label="Color" score={matchMetrics.color} referenceColor={matchMetrics.referenceColor} originalColor={matchMetrics.originalColor} matchedColor={matchMetrics.matchedColor} detail="Overall palette" /><MatchCard label="Skin tone" score={matchMetrics.skin} referenceColor={matchMetrics.referenceSkinColor} originalColor={matchMetrics.originalSkinColor} matchedColor={matchMetrics.matchedSkinColor} detail="Warmth estimate" /><MatchCard label="Contrast" score={matchMetrics.contrast} referenceColor="#555b68" originalColor="#8b8d94" matchedColor="#626773" detail="Light and shadow" /></div> : <p className="match-empty">Add one reference photo and one photo to edit to see color patches and the match score.</p>}</div>
+            <div className="match-report"><div className="match-report-heading"><div><span className="panel-kicker">Match check</span><h3>How close is the look?</h3></div><div className="match-report-actions"><strong>{matchMetrics ? `${Math.round(matchMetrics.overall * 100)}% matched` : 'Ready when you are'}</strong><button className="check-match-button" onClick={checkMatch} disabled={isCheckingMatch}>{isCheckingMatch ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />} {isCheckingMatch ? 'Checking…' : 'Check match'}</button></div></div>{matchMetrics ? <div className="match-cards"><MatchCard label="Color" score={matchMetrics.color} referenceColor={matchMetrics.referenceColor} originalColor={matchMetrics.originalColor} matchedColor={matchMetrics.matchedColor} detail="Overall palette" /><MatchCard label="Skin tone" score={matchMetrics.skin} referenceColor={matchMetrics.referenceSkinColor} originalColor={matchMetrics.originalSkinColor} matchedColor={matchMetrics.matchedSkinColor} detail="Face and skin balance" /><MatchCard label="Contrast" score={matchMetrics.contrast} referenceColor="#555b68" originalColor="#8b8d94" matchedColor="#626773" detail="Light and shadow" /></div> : <p className="match-empty">Add your photos, then tap Check match to compare color, skin tone, and contrast with the visual fingerprint.</p>}</div>
           </section>
 
           <aside className="side-panel target-panel">
             <div className="panel-heading"><div><span className="panel-kicker"><span className="step-number">2</span> Photos to edit</span><h2>Make them match</h2></div><span className="count-badge">{targets.length}</span></div>
             <p className="panel-copy">Add one photo or a whole set. Each image keeps its own lighting while sharing the look.</p>
-            <UploadZone label="Add photos to edit" hint="Drop one or many images here" onFiles={addTargets} />
-            {targets.length > 0 && <div className="target-list">{targets.map((target, index) => <button className={`target-item ${selectedTarget?.id === target.id ? 'selected' : ''}`} key={target.id} onClick={() => setSelectedTargetId(target.id)}><img src={target.url} alt="" /><span className="target-info"><strong>{target.name}</strong><small>{target.status === 'processing' ? 'Adapting…' : target.status === 'done' ? 'Ready to download' : target.status === 'error' ? 'Could not process' : `Photo ${String(index + 1).padStart(2, '0')}`}</small></span>{target.status === 'processing' ? <LoaderCircle className="spin target-state" size={16} /> : target.status === 'done' ? <Check className="target-state done" size={16} /> : <button className="remove-target" onClick={(event) => { event.stopPropagation(); removeTarget(target.id) }} aria-label={`Remove ${target.name}`}><Trash2 size={15} /></button>}</button>)}</div>}
+            <UploadZone label={isUploading ? 'Reading photos…' : 'Add photos to edit'} hint="Drop one or many images here" onFiles={addTargets} />
+            {targets.length > 0 && <div className="target-list">{targets.map((target, index) => <div className={`target-item ${selectedTarget?.id === target.id ? 'selected' : ''}`} key={target.id} role="button" tabIndex={0} onClick={() => setSelectedTargetId(target.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedTargetId(target.id) }}><img src={target.url} alt="" /><span className="target-info"><strong>{target.name}</strong><small>{target.status === 'processing' ? 'Adapting…' : target.status === 'done' ? 'Ready to save' : target.status === 'error' ? 'Could not process' : `Photo ${String(index + 1).padStart(2, '0')}`}</small></span>{target.status === 'processing' ? <LoaderCircle className="spin target-state" size={16} /> : target.status === 'done' ? <Check className="target-state done" size={16} /> : <button className="remove-target" onClick={(event) => { event.stopPropagation(); removeTarget(target.id) }} aria-label={`Remove ${target.name}`}><Trash2 size={15} /></button>}</div>)}</div>}
             {targets.length > 0 && <button className="download-all" onClick={() => void saveToPhotos(selectedTarget)} disabled={!selectedTarget?.processedUrl}><Share2 size={17} /> Save to Photos</button>}
             {targets.length > 0 && <p className="save-hint">On phone, this opens the share sheet so you can choose Save Image or Photos.</p>}
             <div className="batch-note"><Layers3 size={15} /><span>Batch mode keeps each photo’s lighting natural while carrying over the look.</span></div>

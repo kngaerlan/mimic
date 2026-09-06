@@ -9,6 +9,10 @@ export type StyleFingerprint = {
   red: number
   green: number
   blue: number
+  skinWarmth: number
+  skinBrightness: number
+  skinSaturation: number
+  skinCoverage: number
   sampleCount: number
 }
 
@@ -18,6 +22,8 @@ export type EditControls = {
   softer: number
   film: number
   color: number
+  flash: number
+  clean: number
 }
 
 export type ImageStats = {
@@ -30,6 +36,10 @@ export type ImageStats = {
   meanBlue: number
   shadowMean: number
   highlightMean: number
+  skinWarmth: number
+  skinBrightness: number
+  skinSaturation: number
+  skinCoverage: number
 }
 
 export type MatchMetrics = {
@@ -65,6 +75,13 @@ const hashNoise = (x: number, y: number, seed: number) => {
   return value - Math.floor(value)
 }
 
+const isSkinPixel = (red: number, green: number, blue: number) => {
+  const max = Math.max(red, green, blue)
+  const min = Math.min(red, green, blue)
+  const saturation = max === 0 ? 0 : (max - min) / max
+  return red > 0.22 && green > 0.12 && blue > 0.08 && red > green * 1.04 && green > blue * 1.03 && red - blue > 0.08 && saturation > 0.12 && saturation < 0.78
+}
+
 export const loadImage = (source: string | File) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
@@ -98,6 +115,10 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
   let shadowCount = 0
   let highlightSum = 0
   let highlightCount = 0
+  let skinWarmthSum = 0
+  let skinBrightnessSum = 0
+  let skinSaturationSum = 0
+  let skinCount = 0
   let count = 0
 
   for (let index = 0; index < data.length; index += 16) {
@@ -107,9 +128,10 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
     const luma = toLuma(r, g, b)
     const max = Math.max(r, g, b) / 255
     const min = Math.min(r, g, b) / 255
+    const saturation = max === 0 ? 0 : (max - min) / max
     lumaSum += luma
     squaredLumaSum += luma * luma
-    saturationSum += max === 0 ? 0 : (max - min) / max
+    saturationSum += saturation
     warmthSum += (r - b) / 255
     redSum += r / 255
     greenSum += g / 255
@@ -122,10 +144,19 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
       highlightSum += luma
       highlightCount += 1
     }
+    if (isSkinPixel(r / 255, g / 255, b / 255)) {
+      skinWarmthSum += (r - b) / 255
+      skinBrightnessSum += luma
+      skinSaturationSum += saturation
+      skinCount += 1
+    }
     count += 1
   }
 
   const meanLuma = lumaSum / count
+  const skinWarmth = skinCount ? skinWarmthSum / skinCount : warmthSum / count
+  const skinBrightness = skinCount ? skinBrightnessSum / skinCount : meanLuma
+  const skinSaturation = skinCount ? skinSaturationSum / skinCount : saturationSum / count
   return {
     meanLuma,
     contrast: Math.sqrt(Math.max(0, squaredLumaSum / count - meanLuma ** 2)),
@@ -136,6 +167,10 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
     meanBlue: blueSum / count,
     shadowMean: shadowCount ? shadowSum / shadowCount : meanLuma,
     highlightMean: highlightCount ? highlightSum / highlightCount : meanLuma,
+    skinWarmth,
+    skinBrightness,
+    skinSaturation,
+    skinCoverage: skinCount / Math.max(1, count),
   }
 }
 
@@ -155,6 +190,10 @@ export const fingerprintFromStats = (stats: ImageStats[]): StyleFingerprint => {
     red: average('meanRed'),
     green: average('meanGreen'),
     blue: average('meanBlue'),
+    skinWarmth: average('skinWarmth'),
+    skinBrightness: average('skinBrightness'),
+    skinSaturation: average('skinSaturation'),
+    skinCoverage: average('skinCoverage'),
     sampleCount: stats.length,
   }
 }
@@ -181,8 +220,13 @@ export const getMatchMetrics = (fingerprint: StyleFingerprint, target: ImageStat
   const colorDistance = Math.sqrt((matched.red - fingerprint.red) ** 2 + (matched.green - fingerprint.green) ** 2 + (matched.blue - fingerprint.blue) ** 2)
   const originalDistance = Math.sqrt((target.meanRed - fingerprint.red) ** 2 + (target.meanGreen - fingerprint.green) ** 2 + (target.meanBlue - fingerprint.blue) ** 2)
   const color = clamp(1 - colorDistance * 2.4)
-  const warmthMatch = clamp(1 - Math.abs(matched.warmth - fingerprint.warmth) * 4.2)
-  const skin = clamp(warmthMatch * 0.58 + clamp(1 - Math.abs(matched.brightness - fingerprint.brightness) * 1.8) * 0.42)
+  const matchedSkinWarmth = blend(target.skinWarmth, fingerprint.skinWarmth, strength * 0.76) + controls.warmer * 0.0022
+  const matchedSkinBrightness = blend(target.skinBrightness, fingerprint.skinBrightness, strength * 0.68) + controls.flash * 0.0008
+  const matchedSkinSaturation = blend(target.skinSaturation, fingerprint.skinSaturation, strength * 0.5)
+  const skinWarmthMatch = clamp(1 - Math.abs(matchedSkinWarmth - fingerprint.skinWarmth) * 5.4)
+  const skinBrightnessMatch = clamp(1 - Math.abs(matchedSkinBrightness - fingerprint.skinBrightness) * 2.8)
+  const skinSaturationMatch = clamp(1 - Math.abs(matchedSkinSaturation - fingerprint.skinSaturation) * 3.4)
+  const skin = clamp(skinWarmthMatch * 0.48 + skinBrightnessMatch * 0.3 + skinSaturationMatch * 0.22)
   const contrast = clamp(1 - Math.abs(matched.contrast - fingerprint.contrast) * 4.2)
   const overall = clamp(color * 0.48 + skin * 0.32 + contrast * 0.2)
   return {
@@ -193,9 +237,9 @@ export const getMatchMetrics = (fingerprint: StyleFingerprint, target: ImageStat
     referenceColor: colorString(fingerprint.red, fingerprint.green, fingerprint.blue),
     originalColor: colorString(target.meanRed, target.meanGreen, target.meanBlue),
     matchedColor: colorString(matched.red, matched.green, matched.blue),
-    referenceSkinColor: skinColorString(fingerprint.warmth, fingerprint.brightness, fingerprint.saturation),
-    originalSkinColor: skinColorString(target.warmth, target.meanLuma, target.meanSaturation),
-    matchedSkinColor: skinColorString(matched.warmth, matched.brightness, matched.saturation),
+    referenceSkinColor: skinColorString(fingerprint.skinWarmth, fingerprint.skinBrightness, fingerprint.skinSaturation),
+    originalSkinColor: skinColorString(target.skinWarmth, target.skinBrightness, target.skinSaturation),
+    matchedSkinColor: skinColorString(matchedSkinWarmth, matchedSkinBrightness, matchedSkinSaturation),
   }
 }
 
@@ -216,13 +260,22 @@ export const applyMimic = (image: HTMLImageElement, fingerprint: StyleFingerprin
   const data = frame.data
   const sourceStats = analyzeImage(image)
   const strength = clamp(controls.strength / 100)
-  const warmth = fingerprint.warmth * 0.42 + controls.warmer * 0.0028
+  const warmthDelta = fingerprint.warmth - sourceStats.warmth
+  const redDelta = fingerprint.red - sourceStats.meanRed
+  const greenDelta = fingerprint.green - sourceStats.meanGreen
+  const blueDelta = fingerprint.blue - sourceStats.meanBlue
   const contrastDelta = (fingerprint.contrast - sourceStats.contrast) * 0.72 + controls.softer * -0.0014
   const saturationDelta = (fingerprint.saturation - sourceStats.meanSaturation) * 0.42 + controls.color * 0.003
   const brightnessDelta = (fingerprint.brightness - sourceStats.meanLuma) * 0.45
   const shadowTarget = fingerprint.shadowLift * 0.16 + controls.softer * 0.0009
-  const filmAmount = controls.film / 100
+  const cleanAmount = controls.clean / 100
+  const filmAmount = (controls.film / 100) * (1 - cleanAmount * 0.92)
   const softness = clamp(fingerprint.highlightSoftness * 0.16 + Math.max(0, controls.softer) * 0.0016)
+  const flashAmount = controls.flash / 100
+  const skinToneAmount = strength * (fingerprint.skinCoverage > 0.015 && sourceStats.skinCoverage > 0.015 ? 0.58 : 0)
+  const skinWarmthDelta = fingerprint.skinWarmth - sourceStats.skinWarmth
+  const skinBrightnessDelta = fingerprint.skinBrightness - sourceStats.skinBrightness
+  const skinSaturationDelta = fingerprint.skinSaturation - sourceStats.skinSaturation
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -236,19 +289,34 @@ export const applyMimic = (image: HTMLImageElement, fingerprint: StyleFingerprin
       luma = clamp((luma - 0.5) * adaptedContrast + 0.5)
       luma = clamp(luma + (1 - luma) * shadowTarget * strength)
       luma = clamp(luma - Math.max(0, luma - 0.78) * softness * strength)
+      const centerX = x / Math.max(1, width - 1) - 0.5
+      const centerY = y / Math.max(1, height - 1) - 0.5
+      const centerBias = clamp(1 - Math.sqrt(centerX * centerX + centerY * centerY) * 1.35)
+      luma = clamp(luma + (1 - luma) * flashAmount * (0.045 + centerBias * 0.1))
 
       const colorScale = originalLuma > 0.001 ? luma / originalLuma : 1
       let r = originalR * colorScale
       let g = originalG * colorScale
       let b = originalB * colorScale
-      r += warmth * strength
-      g += warmth * strength * 0.08
-      b -= warmth * strength * 0.8
+      r += (redDelta * 0.52 + warmthDelta * 0.16 + controls.warmer * 0.0028) * strength
+      g += (greenDelta * 0.52 + warmthDelta * 0.035) * strength
+      b += (blueDelta * 0.52 - warmthDelta * 0.14) * strength
       const mean = (r + g + b) / 3
-      const saturationScale = 1 + saturationDelta * strength * 2.3
+      const saturationScale = 1 + saturationDelta * strength * 2.3 * (1 - cleanAmount * 0.18)
       r = mean + (r - mean) * saturationScale
       g = mean + (g - mean) * saturationScale
       b = mean + (b - mean) * saturationScale
+
+      if (skinToneAmount && isSkinPixel(originalR, originalG, originalB)) {
+        r += (skinWarmthDelta * 0.7 + skinBrightnessDelta * 0.18) * skinToneAmount
+        g += (skinWarmthDelta * 0.16 + skinBrightnessDelta * 0.12) * skinToneAmount
+        b -= (skinWarmthDelta * 0.52 - skinBrightnessDelta * 0.08) * skinToneAmount
+        const skinMean = (r + g + b) / 3
+        const skinSaturationScale = 1 + skinSaturationDelta * skinToneAmount * 1.8
+        r = skinMean + (r - skinMean) * skinSaturationScale
+        g = skinMean + (g - skinMean) * skinSaturationScale
+        b = skinMean + (b - skinMean) * skinSaturationScale
+      }
 
       const edgeX = x / Math.max(1, width - 1) - 0.5
       const edgeY = y / Math.max(1, height - 1) - 0.5
@@ -274,6 +342,7 @@ export const formatStyleTags = (fingerprint: StyleFingerprint) => {
   if (fingerprint.saturation < 0.2) tags.push('Muted color')
   if (fingerprint.saturation > 0.32) tags.push('Rich color')
   if (fingerprint.grain > 0.34) tags.push('Film texture')
+  if (fingerprint.skinCoverage > 0.015) tags.push('Skin tone balance')
   return tags.length ? tags.slice(0, 4) : ['Balanced color', 'Natural contrast']
 }
 
@@ -286,8 +355,11 @@ export const getFingerprintDefinitions = (fingerprint: StyleFingerprint): Finger
   const shadowDescription = fingerprint.shadowLift > 0.48 ? 'Dark areas stay open so detail is easier to see.' : 'Dark areas stay rich and grounded.'
   const textureLabel = fingerprint.grain > 0.34 ? 'Film texture' : 'Clean texture'
   const textureDescription = fingerprint.grain > 0.34 ? 'A small amount of grain and color variation gives the look character.' : 'The look stays smooth and polished with very little grain.'
+  const skinLabel = fingerprint.skinCoverage > 0.015 ? 'Skin tone' : 'Skin tone fallback'
+  const skinDescription = fingerprint.skinCoverage > 0.015 ? 'Skin-colored areas are matched separately so faces stay natural while the look changes.' : 'No strong skin region was detected, so Mimic uses the overall color balance gently.'
   return [
     { label: warmthLabel, description: warmthDescription, value: Math.round(clamp(0.5 + Math.abs(fingerprint.warmth) * 3.2) * 100) },
+    { label: skinLabel, description: skinDescription, value: Math.round(clamp(fingerprint.skinCoverage > 0.015 ? 0.58 + fingerprint.skinCoverage * 1.6 : 0.28) * 100) },
     { label: contrastLabel, description: contrastDescription, value: Math.round(clamp(fingerprint.contrast * 2.8) * 100) },
     { label: shadowLabel, description: shadowDescription, value: Math.round(clamp(fingerprint.shadowLift) * 100) },
     { label: textureLabel, description: textureDescription, value: Math.round(clamp(fingerprint.grain) * 100) },

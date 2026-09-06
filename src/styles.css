@@ -92,3 +92,19 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .workflow-legend .step-item { font-size: 11px; }
   .preview-stage { min-height: 300px; }
 }
+
+/* Quick look controls stay easy to reach without making the preview feel busy. */
+.mode-switch { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.mode-switch::-webkit-scrollbar { display: none; }
+.mode-switch button { flex: 0 0 auto; white-space: nowrap; }
+.match-report-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.match-report-actions > strong { color: #007aff; font-size: 11px; font-weight: 650; white-space: nowrap; }
+.check-match-button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; color: #007aff; background: #eaf3ff; border: 1px solid #c7dff9; border-radius: 8px; font-size: 10px; font-weight: 650; white-space: nowrap; }
+.check-match-button:hover:not(:disabled) { background: #dceeff; }
+.target-item:focus-visible, .upload-zone:focus-visible, .check-match-button:focus-visible, .mode-switch button:focus-visible { outline: 3px solid rgba(0,122,255,.22); outline-offset: 2px; }
+
+@media (max-width: 780px) {
+  .mode-switch { width: 100%; justify-content: flex-start; }
+  .match-report-heading { align-items: flex-start; flex-direction: column; }
+  .match-report-actions { width: 100%; justify-content: space-between; }
+}
