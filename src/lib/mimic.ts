@@ -6,6 +6,9 @@ export type StyleFingerprint = {
   shadowLift: number
   highlightSoftness: number
   grain: number
+  red: number
+  green: number
+  blue: number
   sampleCount: number
 }
 
@@ -22,8 +25,24 @@ export type ImageStats = {
   contrast: number
   meanSaturation: number
   warmth: number
+  meanRed: number
+  meanGreen: number
+  meanBlue: number
   shadowMean: number
   highlightMean: number
+}
+
+export type MatchMetrics = {
+  color: number
+  skin: number
+  contrast: number
+  overall: number
+  referenceColor: string
+  originalColor: string
+  matchedColor: string
+  referenceSkinColor: string
+  originalSkinColor: string
+  matchedSkinColor: string
 }
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value))
@@ -66,6 +85,9 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
   let squaredLumaSum = 0
   let saturationSum = 0
   let warmthSum = 0
+  let redSum = 0
+  let greenSum = 0
+  let blueSum = 0
   let shadowSum = 0
   let shadowCount = 0
   let highlightSum = 0
@@ -83,6 +105,9 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
     squaredLumaSum += luma * luma
     saturationSum += max === 0 ? 0 : (max - min) / max
     warmthSum += (r - b) / 255
+    redSum += r / 255
+    greenSum += g / 255
+    blueSum += b / 255
     if (luma < 0.35) {
       shadowSum += luma
       shadowCount += 1
@@ -100,6 +125,9 @@ export const analyzeImage = (image: HTMLImageElement): ImageStats => {
     contrast: Math.sqrt(Math.max(0, squaredLumaSum / count - meanLuma ** 2)),
     meanSaturation: saturationSum / count,
     warmth: warmthSum / count,
+    meanRed: redSum / count,
+    meanGreen: greenSum / count,
+    meanBlue: blueSum / count,
     shadowMean: shadowCount ? shadowSum / shadowCount : meanLuma,
     highlightMean: highlightCount ? highlightSum / highlightCount : meanLuma,
   }
@@ -118,7 +146,50 @@ export const fingerprintFromStats = (stats: ImageStats[]): StyleFingerprint => {
     shadowLift,
     highlightSoftness,
     grain,
+    red: average('meanRed'),
+    green: average('meanGreen'),
+    blue: average('meanBlue'),
     sampleCount: stats.length,
+  }
+}
+
+const colorString = (red: number, green: number, blue: number) => `rgb(${Math.round(clamp(red) * 255)}, ${Math.round(clamp(green) * 255)}, ${Math.round(clamp(blue) * 255)})`
+const skinColorString = (warmth: number, brightness: number, saturation: number) => {
+  const base = clamp(0.46 + brightness * 0.32)
+  return colorString(base + warmth * 0.62 + saturation * 0.07, base * 0.72 + saturation * 0.04, base * 0.56 - warmth * 0.14)
+}
+
+const blend = (from: number, to: number, amount: number) => from + (to - from) * clamp(amount)
+
+export const getMatchMetrics = (fingerprint: StyleFingerprint, target: ImageStats, controls: EditControls): MatchMetrics => {
+  const strength = clamp(controls.strength / 100)
+  const matched = {
+    brightness: blend(target.meanLuma, fingerprint.brightness, strength * 0.72),
+    saturation: blend(target.meanSaturation, fingerprint.saturation, strength * 0.55),
+    warmth: blend(target.warmth, fingerprint.warmth, strength * 0.62) + controls.warmer * 0.0028,
+    contrast: blend(target.contrast, fingerprint.contrast, strength * 0.58) - controls.softer * 0.0014,
+    red: blend(target.meanRed, fingerprint.red, strength * 0.62),
+    green: blend(target.meanGreen, fingerprint.green, strength * 0.62),
+    blue: blend(target.meanBlue, fingerprint.blue, strength * 0.62),
+  }
+  const colorDistance = Math.sqrt((matched.red - fingerprint.red) ** 2 + (matched.green - fingerprint.green) ** 2 + (matched.blue - fingerprint.blue) ** 2)
+  const originalDistance = Math.sqrt((target.meanRed - fingerprint.red) ** 2 + (target.meanGreen - fingerprint.green) ** 2 + (target.meanBlue - fingerprint.blue) ** 2)
+  const color = clamp(1 - colorDistance * 2.4)
+  const warmthMatch = clamp(1 - Math.abs(matched.warmth - fingerprint.warmth) * 4.2)
+  const skin = clamp(warmthMatch * 0.58 + clamp(1 - Math.abs(matched.brightness - fingerprint.brightness) * 1.8) * 0.42)
+  const contrast = clamp(1 - Math.abs(matched.contrast - fingerprint.contrast) * 4.2)
+  const overall = clamp(color * 0.48 + skin * 0.32 + contrast * 0.2)
+  return {
+    color,
+    skin,
+    contrast,
+    overall,
+    referenceColor: colorString(fingerprint.red, fingerprint.green, fingerprint.blue),
+    originalColor: colorString(target.meanRed, target.meanGreen, target.meanBlue),
+    matchedColor: colorString(matched.red, matched.green, matched.blue),
+    referenceSkinColor: skinColorString(fingerprint.warmth, fingerprint.brightness, fingerprint.saturation),
+    originalSkinColor: skinColorString(target.warmth, target.meanLuma, target.meanSaturation),
+    matchedSkinColor: skinColorString(matched.warmth, matched.brightness, matched.saturation),
   }
 }
 
