@@ -59,3 +59,36 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .fingerprint-confidence { margin: 14px 0 13px; }.fingerprint-confidence > div { display: flex; justify-content: space-between; align-items: center; color: #6e6e73; font-size: 9px; }.fingerprint-confidence strong { color: #007aff; font-size: 10px; }.confidence-track, .definition-track { display: block; height: 4px; overflow: hidden; border-radius: 99px; background: #e1e5eb; }.confidence-track { margin-top: 7px; }.confidence-track > span, .definition-track > span { display: block; height: 100%; border-radius: inherit; background: #007aff; }.fingerprint-definitions { display: grid; gap: 10px; margin-top: 14px; padding-top: 13px; border-top: 1px solid #dbe6f3; }.definition-top { display: flex; justify-content: space-between; gap: 8px; }.definition-top strong, .definition-top small { display: block; }.definition-top strong { color: #1d1d1f; font-size: 10px; }.definition-top small { margin-top: 3px; color: #6e6e73; font-size: 9px; line-height: 1.35; }.definition-top b { flex: 0 0 auto; color: #007aff; font-size: 9px; }.definition-track { height: 3px; margin-top: 6px; }.definition-track > span { background: #5e5ce6; }
 
 @media (max-width: 920px) { .match-cards { grid-template-columns: 1fr; }.match-card { display: grid; grid-template-columns: 1fr 118px; column-gap: 10px; align-items: center; }.match-card-top { grid-column: 1; }.match-patches { grid-column: 2; grid-row: 1 / span 3; margin: 0; }.match-card-foot { grid-column: 2; grid-row: 3; }.match-meter { grid-column: 1; } }
+
+/* Mobile flow: teach Mimic first, choose photos second, preview third. */
+@media (max-width: 780px) {
+  .workspace { width: calc(100% - 24px); padding-top: 24px; }
+  .workspace-intro { margin-bottom: 18px; }
+  .workspace-intro h1 { font-size: 30px; line-height: 1.08; margin: 8px 0 10px; }
+  .intro-copy { font-size: 14px; line-height: 1.45; }
+  .workflow-legend { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 18px; white-space: normal; }
+  .workflow-legend .step-item { gap: 8px; min-height: 38px; padding: 8px 10px; color: #6e6e73; background: #fff; border: 1px solid #e5e5ea; border-radius: 10px; }
+  .editor-grid { gap: 12px; }
+  .reference-panel { order: 1; }
+  .target-panel { order: 2; }
+  .preview-panel { order: 3; }
+  .side-panel { padding: 16px; border-radius: 16px; }
+  .panel-heading h2, .fine-tune-heading h2 { font-size: 18px; }
+  .panel-copy { margin: 10px 0 13px; font-size: 12px; line-height: 1.45; }
+  .upload-zone { min-height: 110px; padding: 14px 10px; }
+  .fingerprint-card { margin-top: 12px; }
+  .privacy-note, .batch-note { margin-top: 12px; font-size: 10px; }
+  .target-panel .target-list { margin-top: 10px; }
+  .target-panel .download-all { margin-top: 12px; }
+  .preview-toolbar { padding: 14px 16px; }
+  .preview-stage { min-height: 340px; margin: 12px; }
+  .preview-footer { padding: 14px 16px; }
+  .match-report { padding: 0 16px 16px; }
+  .fine-tune-section { margin-top: 12px; padding: 16px; }
+}
+
+@media (max-width: 420px) {
+  .workspace-intro h1 { font-size: 28px; }
+  .workflow-legend .step-item { font-size: 11px; }
+  .preview-stage { min-height: 300px; }
+}
