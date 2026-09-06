@@ -299,10 +299,11 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
       const centerY = y / Math.max(1, height - 1) - 0.5
       const centerBias = clamp(1 - Math.sqrt(centerX * centerX + centerY * centerY) * 1.35)
       const skinPixel = isSkinPixel(originalR, originalG, originalB)
-      const subjectBias = clamp(centerBias * 0.78 + (skinPixel ? 0.48 : 0))
+      const subjectBias = clamp(Math.pow(centerBias, 2.35) * 0.88 + (skinPixel ? 0.42 : 0))
       if (flashAmount) {
-        luma = clamp((luma - 0.46) * (1 + flashAmount * 0.42 * subjectBias) + 0.46)
-        luma = clamp(luma + (1 - luma) * flashAmount * subjectBias * 0.28)
+        const directFlash = flashAmount * subjectBias
+        luma = clamp((luma - 0.46) * (1 + directFlash * 0.58) + 0.46)
+        luma = clamp(luma + (1 - luma) * directFlash * 0.38)
       }
 
       const colorScale = originalLuma > 0.001 ? luma / originalLuma : 1
@@ -327,6 +328,13 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
         r = skinMean + (r - skinMean) * skinSaturationScale
         g = skinMean + (g - skinMean) * skinSaturationScale
         b = skinMean + (b - skinMean) * skinSaturationScale
+      }
+
+      if (flashAmount && subjectBias > 0.18) {
+        const flashWhiteMix = flashAmount * subjectBias * 0.11
+        r += (1 - r) * flashWhiteMix
+        g += (1 - g) * flashWhiteMix
+        b += (1 - b) * flashWhiteMix
       }
 
       const edgeX = x / Math.max(1, width - 1) - 0.5
