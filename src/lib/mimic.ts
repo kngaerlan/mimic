@@ -297,7 +297,10 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
       const centerX = x / Math.max(1, width - 1) - 0.5
       const centerY = y / Math.max(1, height - 1) - 0.5
       const centerBias = clamp(1 - Math.sqrt(centerX * centerX + centerY * centerY) * 1.35)
-      luma = clamp(luma + (1 - luma) * flashAmount * (0.045 + centerBias * 0.1))
+      if (flashAmount) {
+        luma = clamp((luma - 0.46) * (1 + flashAmount * 0.42) + 0.46)
+        luma = clamp(luma + (1 - luma) * flashAmount * (0.08 + centerBias * 0.18))
+      }
 
       const colorScale = originalLuma > 0.001 ? luma / originalLuma : 1
       let r = originalR * colorScale

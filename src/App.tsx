@@ -132,7 +132,6 @@ function App() {
   const [isUploading, setIsUploading] = useState(false)
   const [selectedTargetStats, setSelectedTargetStats] = useState<ImageStats>()
   const [matchChecked, setMatchChecked] = useState(false)
-  const [isCheckingMatch, setIsCheckingMatch] = useState(false)
   const [notice, setNotice] = useState('')
 
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? targets[0]
@@ -272,11 +271,7 @@ function App() {
     } else if (!selectedTargetStats || !selectedTarget) {
       setNotice('Add a photo to edit first.')
     } else {
-      setIsCheckingMatch(true)
-      window.setTimeout(() => {
-        setMatchChecked(true)
-        setIsCheckingMatch(false)
-      }, 280)
+      setMatchChecked(true)
     }
     window.setTimeout(() => setNotice(''), 3500)
   }
@@ -363,7 +358,7 @@ function App() {
               {selectedTarget && <div className="preview-caption"><span><span className="status-dot" /> Same photo. Same scene. Your look.</span><button className={`compare-toggle ${compareOriginal ? 'active' : ''}`} onClick={() => setCompareOriginal((value) => !value)}>{compareOriginal ? 'Showing original' : 'Compare original'}</button></div>}
             </div>
             <div className="preview-footer"><div className="match-control"><div className="control-title"><span><WandSparkles size={15} /> Match strength</span><strong>{controls.strength}%</strong></div><input type="range" min="0" max="100" value={controls.strength} onChange={(event) => { updateControl('strength', Number(event.target.value)); setPreviewMode('mimic') }} /><div className="control-scale"><span>Natural</span><span>Exact look</span></div></div><div className="preview-size"><span>Preview</span><b>{selectedTarget ? 'Ready to save' : 'Waiting for photo'}</b></div></div>
-            <div className="match-report"><div className="match-report-heading"><div><span className="panel-kicker">Match check</span><h3>How close is the look?</h3></div><div className="match-report-actions"><strong>{matchMetrics ? `${Math.round(matchMetrics.overall * 100)}% matched` : 'Ready when you are'}</strong><button className="check-match-button" onClick={checkMatch} disabled={isCheckingMatch}>{isCheckingMatch ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />} {isCheckingMatch ? 'Checking…' : 'Check match'}</button></div></div>{matchMetrics ? <div className="match-cards"><MatchCard label="Color" score={matchMetrics.color} referenceColor={matchMetrics.referenceColor} originalColor={matchMetrics.originalColor} matchedColor={matchMetrics.matchedColor} detail="Overall palette" /><MatchCard label="Skin tone" score={matchMetrics.skin} referenceColor={matchMetrics.referenceSkinColor} originalColor={matchMetrics.originalSkinColor} matchedColor={matchMetrics.matchedSkinColor} detail="Face and skin balance" /><MatchCard label="Contrast" score={matchMetrics.contrast} referenceColor="#555b68" originalColor="#8b8d94" matchedColor="#626773" detail="Light and shadow" /></div> : <p className="match-empty">Add your photos, then tap Check match to compare color, skin tone, and contrast with the visual fingerprint.</p>}</div>
+            <div className="match-report"><div className="match-report-heading"><div><span className="panel-kicker">Match check</span><h3>How close is the look?</h3></div><div className="match-report-actions"><strong>{matchMetrics ? `${Math.round(matchMetrics.overall * 100)}% matched` : 'Ready when you are'}</strong><button className="check-match-button" onClick={checkMatch}><Check size={13} /> Check match</button></div></div>{matchMetrics ? <div className="match-cards"><MatchCard label="Color" score={matchMetrics.color} referenceColor={matchMetrics.referenceColor} originalColor={matchMetrics.originalColor} matchedColor={matchMetrics.matchedColor} detail="Overall palette" /><MatchCard label="Skin tone" score={matchMetrics.skin} referenceColor={matchMetrics.referenceSkinColor} originalColor={matchMetrics.originalSkinColor} matchedColor={matchMetrics.matchedSkinColor} detail="Face and skin balance" /><MatchCard label="Contrast" score={matchMetrics.contrast} referenceColor="#555b68" originalColor="#8b8d94" matchedColor="#626773" detail="Light and shadow" /></div> : <p className="match-empty">Add your photos, then tap Check match to compare color, skin tone, and contrast with the visual fingerprint.</p>}</div>
           </section>
 
           <aside className="side-panel target-panel">
