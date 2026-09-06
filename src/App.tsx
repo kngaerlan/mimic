@@ -57,7 +57,7 @@ const initialEffects: LookEffects = { flash: false, soften: false, clean: false 
 
 const getEffectiveControls = (controls: EditControls, mode: PreviewMode, effects: LookEffects): EditControls => {
   const effective = { ...controls }
-  if (mode === 'original') return { ...controls, strength: 0, flash: 0, clean: 0 }
+  if (mode === 'original') effective.strength = 0
   if (mode === 'stronger') effective.strength = Math.min(100, controls.strength + 22)
   if (effects.soften) effective.softer = Math.max(controls.softer, 42)
   if (effects.flash) effective.flash = Math.max(controls.flash, 82)
@@ -261,7 +261,6 @@ function App() {
   }
 
   const toggleEffect = (effect: keyof LookEffects) => {
-    setPreviewMode('mimic')
     setEffects((current) => ({ ...current, [effect]: !current[effect] }))
   }
 
@@ -323,7 +322,8 @@ function App() {
     window.setTimeout(() => setNotice(''), 4500)
   }
 
-  const displayUrl = compareOriginal || previewMode === 'original' ? selectedTarget?.url : selectedTarget?.processedUrl
+  const hasActiveEffects = effects.flash || effects.soften || effects.clean
+  const displayUrl = compareOriginal || (previewMode === 'original' && !hasActiveEffects) ? selectedTarget?.url : selectedTarget?.processedUrl
 
   return (
     <div className="app-shell">
@@ -351,7 +351,7 @@ function App() {
           </aside>
 
           <section className="preview-panel">
-            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="preview-controls"><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div><div className="effect-toggles" role="group" aria-label="Optional look effects"><button className={effects.flash ? 'active' : ''} aria-pressed={effects.flash} onClick={() => toggleEffect('flash')}>Flash</button><button className={effects.soften ? 'active' : ''} aria-pressed={effects.soften} onClick={() => toggleEffect('soften')}>Soften</button><button className={effects.clean ? 'active' : ''} aria-pressed={effects.clean} onClick={() => toggleEffect('clean')}>Clean</button></div></div></div>
+            <div className="preview-toolbar"><div className="toolbar-label"><span className="panel-kicker"><span className="step-number">3</span> Preview</span><span className="preview-status">{selectedTarget ? selectedTarget.name : 'Add a target photo to begin'}</span></div><div className="preview-controls"><div className="mode-switch" role="group" aria-label="Preview mode">{(['original', 'mimic', 'stronger'] as const).map((mode) => <button key={mode} className={previewMode === mode ? 'active' : ''} onClick={() => setMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}</div><div className="effect-toggles" role="group" aria-label="Optional look effects"><button className={`effect-toggle ${effects.flash ? 'active' : ''}`} aria-pressed={effects.flash} onClick={() => toggleEffect('flash')}><span>Flash</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button><button className={`effect-toggle ${effects.soften ? 'active' : ''}`} aria-pressed={effects.soften} onClick={() => toggleEffect('soften')}><span>Soften</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button><button className={`effect-toggle ${effects.clean ? 'active' : ''}`} aria-pressed={effects.clean} onClick={() => toggleEffect('clean')}><span>Clean</span><span className="toggle-track" aria-hidden="true"><span className="toggle-thumb" /></span></button></div></div></div>
             <div className={`preview-stage ${!displayUrl ? 'is-empty' : ''}`}>
               {displayUrl ? <img src={displayUrl} alt="Mimic preview" /> : <div className="preview-empty"><div className="empty-orbit"><ImagePlus size={28} /></div><h3>Your preview will live here</h3><p>Start by adding a reference look and one photo to edit.</p></div>}
               {selectedTarget?.status === 'processing' && <div className="processing-overlay"><LoaderCircle className="spin" size={22} /><span>Adapting your look…</span></div>}

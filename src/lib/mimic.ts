@@ -264,13 +264,14 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
   const redDelta = fingerprint.red - sourceStats.meanRed
   const greenDelta = fingerprint.green - sourceStats.meanGreen
   const blueDelta = fingerprint.blue - sourceStats.meanBlue
-  const contrastDelta = (fingerprint.contrast - sourceStats.contrast) * 0.72 + controls.softer * -0.0014
+  const softenAmount = clamp(Math.max(0, controls.softer) / 50)
+  const contrastDelta = (fingerprint.contrast - sourceStats.contrast) * 0.72 * strength + controls.softer * -0.0014 * Math.max(strength, softenAmount)
   const saturationDelta = (fingerprint.saturation - sourceStats.meanSaturation) * 0.42 + controls.color * 0.003
   const brightnessDelta = (fingerprint.brightness - sourceStats.meanLuma) * 0.45
-  const shadowTarget = fingerprint.shadowLift * 0.16 + controls.softer * 0.0009
+  const shadowTarget = fingerprint.shadowLift * 0.16 * strength + softenAmount * 0.09
   const cleanAmount = controls.clean / 100
   const filmAmount = (controls.film / 100) * (1 - cleanAmount * 0.92)
-  const softness = clamp(fingerprint.highlightSoftness * 0.16 + Math.max(0, controls.softer) * 0.0016)
+  const softness = clamp(fingerprint.highlightSoftness * 0.16 * strength + softenAmount * 0.18)
   const flashAmount = controls.flash / 100
   const skinToneAmount = strength * (fingerprint.skinCoverage > 0.015 && sourceStats.skinCoverage > 0.015 ? 0.58 : 0)
   const skinWarmthDelta = fingerprint.skinWarmth - sourceStats.skinWarmth
@@ -290,16 +291,18 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
       const originalB = data[index + 2] / 255
       const originalLuma = 0.2126 * originalR + 0.7152 * originalG + 0.0722 * originalB
       let luma = clamp(originalLuma + brightnessDelta * strength)
-      const adaptedContrast = 1 + contrastDelta * strength * 2.2
-      luma = clamp((luma - 0.5) * adaptedContrast + 0.5)
-      luma = clamp(luma + (1 - luma) * shadowTarget * strength)
-      luma = clamp(luma - Math.max(0, luma - 0.78) * softness * strength)
+      luma = clamp((luma - 0.5) * (1 + contrastDelta * 2.2) + 0.5)
+      luma = clamp(luma + (1 - luma) * shadowTarget)
+      luma = clamp(luma - Math.max(0, luma - 0.78) * softness)
+      luma = clamp(luma + (0.5 - luma) * cleanAmount * 0.04)
       const centerX = x / Math.max(1, width - 1) - 0.5
       const centerY = y / Math.max(1, height - 1) - 0.5
       const centerBias = clamp(1 - Math.sqrt(centerX * centerX + centerY * centerY) * 1.35)
+      const skinPixel = isSkinPixel(originalR, originalG, originalB)
+      const subjectBias = clamp(centerBias * 0.78 + (skinPixel ? 0.48 : 0))
       if (flashAmount) {
-        luma = clamp((luma - 0.46) * (1 + flashAmount * 0.42) + 0.46)
-        luma = clamp(luma + (1 - luma) * flashAmount * (0.08 + centerBias * 0.18))
+        luma = clamp((luma - 0.46) * (1 + flashAmount * 0.42 * subjectBias) + 0.46)
+        luma = clamp(luma + (1 - luma) * flashAmount * subjectBias * 0.28)
       }
 
       const colorScale = originalLuma > 0.001 ? luma / originalLuma : 1
@@ -310,12 +313,12 @@ export const applyMimic = async (image: HTMLImageElement, fingerprint: StyleFing
       g += (greenDelta * 0.52 + warmthDelta * 0.035) * strength
       b += (blueDelta * 0.52 - warmthDelta * 0.14) * strength
       const mean = (r + g + b) / 3
-      const saturationScale = 1 + saturationDelta * strength * 2.3 * (1 - cleanAmount * 0.18)
+      const saturationScale = (1 + saturationDelta * strength * 2.3) * (1 - cleanAmount * 0.12)
       r = mean + (r - mean) * saturationScale
       g = mean + (g - mean) * saturationScale
       b = mean + (b - mean) * saturationScale
 
-      if (skinToneAmount && isSkinPixel(originalR, originalG, originalB)) {
+      if (skinToneAmount && skinPixel) {
         r += (skinWarmthDelta * 0.7 + skinBrightnessDelta * 0.18) * skinToneAmount
         g += (skinWarmthDelta * 0.16 + skinBrightnessDelta * 0.12) * skinToneAmount
         b -= (skinWarmthDelta * 0.52 - skinBrightnessDelta * 0.08) * skinToneAmount

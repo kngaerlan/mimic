@@ -99,9 +99,13 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .mode-switch::-webkit-scrollbar { display: none; }
 .effect-toggles::-webkit-scrollbar { display: none; }
 .mode-switch button { flex: 0 0 auto; white-space: nowrap; }
-.effect-toggles { display: flex; gap: 2px; padding: 3px; background: #f2f2f7; border-radius: 9px; }
-.effect-toggles button { flex: 0 0 auto; padding: 7px 9px; color: #6e6e73; background: transparent; border-radius: 7px; font-size: 10px; white-space: nowrap; }
-.effect-toggles button.active { color: #fff; background: #5e5ce6; box-shadow: 0 2px 5px rgba(94,92,230,.22); }
+.effect-toggles { display: flex; align-items: center; gap: 6px; padding: 0; background: transparent; }
+.effect-toggle { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 5px 7px 5px 10px; color: #6e6e73; background: #fff; border: 1px solid #e5e5ea; border-radius: 999px; font-size: 10px; white-space: nowrap; }
+.effect-toggle.active { color: #1d1d1f; border-color: #b8d7f8; background: #f5f9ff; }
+.toggle-track { display: inline-flex; align-items: center; width: 25px; height: 15px; padding: 2px; background: #d2d2d7; border-radius: 99px; transition: .18s ease; }
+.toggle-thumb { display: block; width: 11px; height: 11px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .18s ease; }
+.effect-toggle.active .toggle-track { background: #007aff; }
+.effect-toggle.active .toggle-thumb { transform: translateX(10px); }
 .match-report-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
 .match-report-actions > strong { color: #007aff; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .check-match-button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; color: #007aff; background: #eaf3ff; border: 1px solid #c7dff9; border-radius: 8px; font-size: 10px; font-weight: 650; white-space: nowrap; }
