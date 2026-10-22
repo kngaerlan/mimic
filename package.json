@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node -e \"require('fs').cpSync('dual-recorder','dist/dual-recorder',{recursive:true,filter:s=>!s.includes('node_modules')})\"",
     "preview": "vite preview"
   },
   "dependencies": {
