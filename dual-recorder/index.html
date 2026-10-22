@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual Recorder MVP</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>Dual Recorder</h1>
+    <span id="status" class="status">Tap "Start camera" to begin</span>
+  </header>
+
+  <main>
+    <section class="previews">
+      <figure class="preview preview--landscape">
+        <canvas id="canvas-landscape" aria-label="Landscape preview"></canvas>
+        <figcaption>Landscape 16:9</figcaption>
+      </figure>
+      <figure class="preview preview--portrait">
+        <canvas id="canvas-portrait" aria-label="Portrait preview"></canvas>
+        <figcaption>Portrait 9:16</figcaption>
+      </figure>
+    </section>
+
+    <!-- Raw camera feed, used only as the draw source. -->
+    <video id="source" playsinline muted hidden></video>
+
+    <div class="timer" id="timer" aria-live="polite">00:00</div>
+
+    <nav class="controls">
+      <button id="btn-camera" class="btn">Start camera</button>
+      <button id="btn-photo" class="btn" disabled>Photo</button>
+      <button id="btn-record" class="btn btn--record" disabled aria-label="Record">
+        <span class="dot"></span>
+      </button>
+    </nav>
+
+    <section id="downloads" class="downloads" hidden>
+      <h2>Last recording</h2>
+      <div id="download-links"></div>
+    </section>
+  </main>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

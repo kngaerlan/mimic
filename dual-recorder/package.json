@@ -1,0 +1,9 @@
+{
+  "name": "dual-recorder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/cropMath.test.mjs",
+    "serve": "python3 -m http.server 8080"
+  }
+}
